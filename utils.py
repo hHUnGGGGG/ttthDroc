@@ -29,9 +29,8 @@ def context_or_tools_web_docs():
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
-        pages = ['tsp', 'vrp', 'cvrp', 'pickup_delivery', 'vrptw', 'cvrptw_resources', 'dimensions', 'penalties',
-                 'routing_tasks']
-        urls = ["https://developers.google.com/optimization/routing/" + i for i in pages]
+        pages = ['assignment_teams', 'assignment_example', 'assignment_cp', 'assignment_groups', 'linear_assignment']
+        urls = ["https://developers.google.com/optimization/assignment/" + i for i in pages]
         loader = WebBaseLoader(
             web_paths=urls,
         )
@@ -115,7 +114,7 @@ def context_mds_bm25():
 def context_all():
     retriever_doc = context_or_tools_web_docs()
     retriever_mds = context_or_tools_mds()
-    retriever_code = context_or_tools_codes()
+    retriever_code = context_assign()
     merge_retriever = MergerRetriever(retrievers=[retriever_doc, retriever_code, retriever_mds])
     return merge_retriever
 
