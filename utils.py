@@ -23,9 +23,9 @@ from common import commented_code
 
 
 def context_or_tools_web_docs():
-    path = "./chroma_db/document"
+    path = "./chroma_db/assignment"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("1---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -64,7 +64,7 @@ def context_or_tools_web_docs():
 def context_or_tools_codes():
     path = "./chroma_db/example"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("2---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -79,7 +79,7 @@ def context_or_tools_codes():
 def context_or_tools_mds():
     path = "./chroma_db/code"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("3---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -93,7 +93,7 @@ def context_or_tools_mds():
 def context_gurobi_codes():
     path = "./chroma_db/gurobi"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("4---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -112,10 +112,10 @@ def context_mds_bm25():
 
 
 def context_all():
-    retriever_doc = context_or_tools_web_docs()
+    # retriever_doc = context_or_tools_web_docs()
     retriever_mds = context_or_tools_mds()
     retriever_code = context_assign()
-    merge_retriever = MergerRetriever(retrievers=[retriever_doc, retriever_code, retriever_mds])
+    merge_retriever = MergerRetriever(retrievers=[retriever_code, retriever_mds])
     return merge_retriever
 
 
@@ -223,7 +223,7 @@ def write_code_to_file(problem, imports, code, llm):
 def context_gene_codes():
     path = "./chroma_db/gene_codes"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("5---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -245,7 +245,7 @@ def merge_retriever():
 def context_assign():
     path = "./chroma_db/assignment"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("6---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")
@@ -260,7 +260,7 @@ def context_assign():
 def context_location():
     path = "./chroma_db/location"
     if os.path.exists(path):
-        print("---LOCAL VECTOR STORE LOADED---")
+        print("7---LOCAL VECTOR STORE LOADED---")
         vectorstore = Chroma(persist_directory=path, embedding_function=OpenAIEmbeddings())
     else:
         print("---CREATING NEW VECTOR STORE---")

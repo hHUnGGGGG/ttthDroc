@@ -30,4 +30,4 @@ input = {
     'solver': 'OR-tools'
 }
 
-optimal = -1 # Placeholder cho giá trị tối ưu
+optimal = 236 # Placeholder cho giá trị tối ưu

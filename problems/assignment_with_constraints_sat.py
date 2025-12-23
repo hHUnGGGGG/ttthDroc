@@ -15,31 +15,29 @@ cost = [
 ]
 
 group1 = [
-    [0, 0, 1, 1],  # Workers 2, 3
-    [0, 1, 0, 1],  # Workers 1, 3
-    [0, 1, 1, 0],  # Workers 1, 2
-    [1, 1, 0, 0],  # Workers 0, 1
-    [1, 0, 1, 0],  # Workers 0, 2
+    [2, 3],
+    [1, 3],
+    [1, 2],
+    [0, 1],
+    [0, 2],
 ]
 
 group2 = [
-    [0, 0, 1, 1],  # Workers 6, 7
-    [0, 1, 0, 1],  # Workers 5, 7
-    [0, 1, 1, 0],  # Workers 5, 6
-    [1, 1, 0, 0],  # Workers 4, 5
-    [1, 0, 0, 1],  # Workers 4, 7
+    [6, 7],
+    [5, 7],
+    [5, 6],
+    [4, 5],
+    [4, 7],
 ]
 
 group3 = [
-    [0, 0, 1, 1],  # Workers 10, 11
-    [0, 1, 0, 1],  # Workers 9, 11
-    [0, 1, 1, 0],  # Workers 9, 10
-    [1, 0, 1, 0],  # Workers 8, 10
-    [1, 0, 0, 1],  # Workers 8, 11
+    [10, 11],
+    [9, 11],
+    [9, 10],
+    [8, 10],
+    [8, 11],
 ]
 
-sizes = [10, 7, 3, 12, 15, 4] # Đã điều chỉnh size tương ứng với 6 tasks trong cost
-total_size_max = 15
 num_workers = len(cost)
 num_tasks = len(cost[0])
 
@@ -48,16 +46,14 @@ params_dict = {
     'group1': group1,
     'group2': group2,
     'group3': group3,
-    'sizes': sizes,
-    'total_size_max': total_size_max,
     'num_workers': num_workers,
     'num_tasks': num_tasks
 }
 
 input = {
-    "problem": "Assignment Problem with Group Logic Constraints and Task Sizes",
-    "code_example": '''def solve(cost: list, group1: list, group2: list, group3: list, sizes: list, total_size_max: int, num_workers: int, num_tasks: int):\n    """\n    Args:\n        cost: matrix of assignment costs\n        group1, group2, group3: lists of allowed assignment combinations (boolean/indicator) for specific worker subsets\n        sizes: the size/weight of each task\n        total_size_max: maximum capacity for each worker\n        num_workers: total number of workers\n        num_tasks: total number of tasks\n\n    Returns:\n        obj: the minimum total cost of assigning all tasks\n    """\n    obj = -1\n    return obj\n''',
+    "problem": "Assignment with Allowed Groups",
+    "code_example": '''def solve(cost: list, group1: list, group2: list, group3: list, num_workers: int, num_tasks: int):\n    """\n    Args:\n        cost: matrix of assignment costs\n        group1: list of allowed worker pairs for group 1 (workers 0-3)\n        group2: list of allowed worker pairs for group 2 (workers 4-7)\n        group3: list of allowed worker pairs for group 3 (workers 8-11)\n        num_workers: total number of workers\n        num_tasks: total number of tasks\n\n    Returns:\n        obj: the minimum total cost of assigning all tasks\n    """\n    obj = -1\n    return obj\n''',
     'solver': 'OR-tools'
 }
 
-optimal = -1 # Placeholder
+optimal = 239

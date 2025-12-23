@@ -221,6 +221,8 @@ def code_check(state: GraphState, param_dict: dict, optimal:float):
     # Check execution
     try:
         sol = write_and_run(imports + "\n" + code, param_dict)
+        print(imports + "\n" + code)
+        print(sol)
         if type(sol) != float:
             if type(sol) == str:
                 if 'Error' in sol:

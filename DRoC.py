@@ -12,6 +12,113 @@ from langchain_anthropic import ChatAnthropic
 
 set_debug(False)
 
+def evolutionary_decomposer(problem, llm):
+    """Extract constraints and prepare for evolutionary optimization at constraint level."""
+
+    system = """You will extract the keywords of an assignment problem for me. 
+    I give you the name of an assignment problem and you produce the keywords according to its constraints.
+    Also assign a priority (1-5) for each constraint based on its complexity and impact on solution quality.
+    Structure your answer with: <keyword1:priority1, keyword2:priority2, ...>. Do not return other things."""
+    if llm.startswith("llama"):
+        llm = ChatOllama(
+            model=llm,
+            temperature=0,
+        )
+    elif llm.startswith("gpt"):
+        llm = ChatOpenAI(model=llm, temperature=0.0, verbose=True)
+    elif llm.startswith("claude"):
+        llm = ChatAnthropic(model=llm, temperature=0.0, max_tokens=5000)
+    else:
+        raise NotImplementedError("llm not supported!")
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", system),
+        ("human", "Here is the name of the assignment problem: \n\n {problem}"),
+    ])
+
+    keyword_extractor = prompt | llm
+    res = keyword_extractor.invoke({"problem": problem}).content.replace("<", "").replace(">", "").split(",")
+
+    constraints = []
+    for item in res:
+        if ":" in item:
+            keyword, priority = item.split(":")
+            constraints.append({"keyword": keyword.strip(), "priority": int(priority.strip())})
+        else:
+            constraints.append({"keyword": item.strip(), "priority": 3})
+
+    return constraints
+def evolve_constraint_code(keyword, code_examples, solver, llm, priority):
+    """Apply evolutionary algorithm to optimize constraint implementation."""
+    if llm.startswith("gpt"):
+        model = ChatOpenAI(model=llm, temperature=0.0, verbose=True)
+    elif llm.startswith("claude"):
+        model = ChatAnthropic(model=llm, temperature=0.0, max_tokens=5000)
+    else:
+        raise NotImplementedError
+
+    population_size = min(len(code_examples), 5 + priority)
+    print(5)
+    prompt_template_evo = ChatPromptTemplate.from_messages([
+        ("system", f"""You are an expert in evolutionary algorithms for constraint optimization.
+        You will evolve population_size implementations of keyword constraint for solver."""),
+        ("user", f"""
+        Apply evolutionary optimization to the keyword constraint using these code examples:
+
+        Evolution requirements:
+        1. Create population_size variants by combining best parts of examples
+        2. Apply mutations: change parameter values, modify constraint logic, optimize data structures
+        3. Select the best evolved implementation based on:
+            - Code efficiency and clarity
+            - Solver compatibility
+            - Constraint accuracy
+            - Performance considerations
+
+        Return only the best evolved constraint implementation without explanations.
+        """)
+    ])
+    print(6)
+    chain = prompt_template_evo | model.with_structured_output(code_examples)
+    result = chain.invoke({
+        "keyword": keyword,
+        "solver": solver,
+        "priority": priority
+    })
+
+    return result.content
+
+
+def evolutionary_constraint_retriever(constraints, solver="or-tools", llm=None):
+    """Retrieve multiple code examples for each constraint and apply evolutionary optimization."""
+    if solver == "OR-tools":
+        retriever = context_all()
+    elif solver == "Gurobi":
+        retriever = context_gurobi_codes()
+    if llm.startswith("gpt"):
+        model = ChatOpenAI(model=llm, temperature=0.0, verbose=True)
+    elif llm.startswith("claude"):
+        model = ChatAnthropic(model=llm, temperature=0.0, max_tokens=5000)
+    else:
+        raise NotImplementedError
+    evolved_constraints = {}
+
+    for constraint_info in constraints:
+        keyword = constraint_info["keyword"]
+        priority = constraint_info["priority"]
+        print(1)
+        docs = retriever.invoke("Python code of " + keyword)
+        print(2)
+        if len(docs) >= 2:
+            print(3)
+            evolved_code = evolve_constraint_code(
+                keyword, docs, solver, llm, priority
+            )
+            print(4)
+            evolved_constraints[keyword] = evolved_code
+        else:
+            if docs:
+                evolved_constraints[keyword] = docs[0].page_content
+
+    return evolved_constraints
 
 def decomposer(problem, llm="gpt-4o"):
     # LLM with function call
@@ -375,141 +482,67 @@ class System():
         return state_new
 
     def run(self):
+        """Modified run method with constraint-level evolutionary optimization."""
         iter = 0
         no_run_time_error = False
         accu_solution = False
-        state = self.standard_generator()
+
+        # Khởi tạo llm object nếu là string
+        # if isinstance(self.llm, str):
+        #     if self.llm.startswith("gpt"):
+        #         llm_obj = ChatOpenAI(model=self.llm, temperature=0.0, verbose=True)
+        #     elif self.llm.startswith("claude"):
+        #         llm_obj = ChatAnthropic(model=self.llm, temperature=0.0, max_tokens=5000)
+        #     else:
+        #         raise NotImplementedError("llm not supported!")
+        # else:
+        #     llm_obj = self.llm
+
+        constraints = evolutionary_decomposer(self.input['problem'], self.llm)
+        evolved_context = evolutionary_constraint_retriever(
+            constraints, self.input['solver'], self.llm
+        )
+
+        # Gọi function retrieval_augmented_generate chứ không phải self.retrieval_augmented_generate
+        res = retrieval_augmented_generate(self.input, evolved_context, self.llm)
+        state = GraphState(error='', messages=[], generation=res, iterations=0)
+        state = code_check(state, self.params, self.optimum)
         print(state)
+
         if state['error'] == 'no':
             no_run_time_error = True
             accu_solution = True
-            write_code_to_file(self.input['problem'], state['generation'].imports, state['generation'].code, self.llm)
+            write_code_to_file(
+                self.input['problem'],
+                state['generation'].imports,
+                state['generation'].code,
+                self.llm
+            )
             return no_run_time_error, accu_solution
+
         while iter < self.max_iteration:
             iter += 1
             if state['error'] != 'no':
                 message = state['messages']
                 if len(message[0]) > 1:
                     if ("The obj. is far from the optimum" in message[0][1]
-                            or "You did not finish the function" in message[0][
-                                1] or "You solution returns nothing or 0" in message[0][1]):
+                            or "You did not finish the function" in message[0][1]
+                            or "You solution returns nothing or 0" in message[0][1]):
                         no_run_time_error = True
                 if self.context is None:
-                    # If fail, conduct RAG for the first round
                     self.context, summary = branched_retriever(self.input['problem'], self.input['solver'], self.llm)
                     print(self.context)
                     res = retrieval_augmented_generate(self.input, self.context, self.llm)
                     state = GraphState(error='', messages=[], generation=res, iterations=iter)
                     state = code_check(state, self.params, self.optimum)
                 else:
-                    # agentic operation
                     state = self.agent(self.input, self.params, state)
                 print(state)
             else:
                 no_run_time_error = True
                 accu_solution = True
-                write_code_to_file(self.input['problem'], state['generation'].imports, state['generation'].code, self.llm)
+                write_code_to_file(self.input['problem'], state['generation'].imports, state['generation'].code,
+                                   self.llm)
                 return no_run_time_error, accu_solution
         return no_run_time_error, accu_solution
 
-#ham moi
-################################################
-def evolutionary_constraint_retriever(constraints, solver="or-tools", llm="gpt-4o"):
-    """Retrieve multiple code examples for each constraint and apply evolutionary optimization."""
-    if solver == "OR-tools":
-        retriever = context_all()
-    elif solver == "Gurobi":
-        retriever = context_gurobi_codes()
-
-    evolved_constraints = {}
-
-    for constraint_info in constraints:
-        keyword = constraint_info["keyword"]
-        priority = constraint_info["priority"]
-
-        # Retrieve multiple examples instead of one
-        docs = retriever.invoke("Python code of " + keyword)
-
-        if len(docs) >= 2:
-            # Apply evolutionary optimization for this constraint
-            evolved_code = evolve_constraint_code(
-                keyword, docs, solver, llm, priority
-            )
-            evolved_constraints[keyword] = evolved_code
-        else:
-            # Fallback to original behavior if not enough examples
-            if docs:
-                evolved_constraints[keyword] = docs[0].page_content
-
-    return evolved_constraints
-
-def evolve_constraint_code(keyword, code_examples, solver, llm, priority):
-    """Apply evolutionary algorithm to optimize constraint implementation."""
-
-    # Determine population size based on priority and available examples
-    population_size = min(len(code_examples), 5 + priority)
-
-    prompt_template_evo = ChatPromptTemplate.from_messages([
-        ("system", f"""You are an expert in evolutionary algorithms for constraint optimization.
-        You will evolve {population_size} implementations of {keyword} constraint for {solver}."""),
-        ("user", f"""
-        Apply evolutionary optimization to the {keyword} constraint using these code examples:
-
-        Examples:
-        {chr(10).join([f'Example {i+1}: {doc.page_content}' for i, doc in enumerate(code_examples[:population_size])])}
-
-        Evolution requirements:
-        1. Create {population_size} variants by combining best parts of examples
-        2. Apply mutations: change parameter values, modify constraint logic, optimize data structures
-        3. Select the best evolved implementation based on:
-            - Code efficiency and clarity
-            - Solver compatibility
-            - Constraint accuracy
-            - Performance considerations
-
-        Return only the best evolved constraint implementation without explanations.
-        """)
-    ])
-
-    if llm.startswith("gpt"):
-        model = ChatOpenAI(model=llm, temperature=0.3, verbose=True) # Higher temperature for creativity
-    elif llm.startswith("claude"):
-        model = ChatAnthropic(model=llm, temperature=0.3, max_tokens=5000)
-
-    chain = prompt_template_evo | model
-    result = chain.invoke({
-        "keyword": keyword,
-        "solver": solver,
-        "priority": priority
-    })
-
-    return result.content
-
-
-def evolutionary_decomposer(problem, llm="gpt-4o"):
-    """Extract constraints and prepare for evolutionary optimization at constraint level."""
-
-    # Modified prompt to return constraint priorities for evolution
-    system = """You will extract the keywords of an assignment problem for me. 
-    I give you the name of an assignment problem and you produce the keywords according to its constraints.
-    Also assign a priority (1-5) for each constraint based on its complexity and impact on solution quality.
-    Structure your answer with: <keyword1:priority1, keyword2:priority2, ...>. Do not return other things."""
-
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", system),
-        ("human", "Here is the name of the assignment problem: \n\n {problem}"),
-    ])
-
-    keyword_extractor = prompt | llm
-    res = keyword_extractor.invoke({"problem": problem}).content.replace("<", "").replace(">", "").split(",")
-
-    # Parse keywords with priorities
-    constraints = []
-    for item in res:
-        if ":" in item:
-            keyword, priority = item.split(":")
-            constraints.append({"keyword": keyword.strip(), "priority": int(priority.strip())})
-        else:
-            constraints.append({"keyword": item.strip(), "priority": 3})
-
-    return constraints

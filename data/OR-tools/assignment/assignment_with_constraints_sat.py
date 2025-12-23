@@ -1,28 +1,10 @@
-#!/usr/bin/env python3
-# Copyright 2010-2024 Google LLC
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""solve an assignment problem with combination constraints on workers."""
-
-from typing import Sequence
-from absl import app
-from ortools.sat.python import cp_model
+"""Solve assignment problem for given group of workers."""
+from ortools.linear_solver import pywraplp
 
 
-def solve_assignment():
-    """solve the assignment problem."""
-    # Data.
-    cost = [
+def main():
+    # Data
+    costs = [
         [90, 76, 75, 70, 50, 74],
         [35, 85, 55, 65, 48, 101],
         [125, 95, 90, 105, 59, 120],
@@ -36,99 +18,129 @@ def solve_assignment():
         [17, 39, 103, 64, 61, 92],
         [101, 45, 83, 59, 92, 27],
     ]
+    num_workers = len(costs)
+    num_tasks = len(costs[0])
 
-    group1 = [
-        [0, 0, 1, 1],  # Workers 2, 3
-        [0, 1, 0, 1],  # Workers 1, 3
-        [0, 1, 1, 0],  # Workers 1, 2
-        [1, 1, 0, 0],  # Workers 0, 1
-        [1, 0, 1, 0],
-    ]  # Workers 0, 2
-
-    group2 = [
-        [0, 0, 1, 1],  # Workers 6, 7
-        [0, 1, 0, 1],  # Workers 5, 7
-        [0, 1, 1, 0],  # Workers 5, 6
-        [1, 1, 0, 0],  # Workers 4, 5
-        [1, 0, 0, 1],
-    ]  # Workers 4, 7
-
-    group3 = [
-        [0, 0, 1, 1],  # Workers 10, 11
-        [0, 1, 0, 1],  # Workers 9, 11
-        [0, 1, 1, 0],  # Workers 9, 10
-        [1, 0, 1, 0],  # Workers 8, 10
-        [1, 0, 0, 1],
-    ]  # Workers 8, 11
-
-    sizes = [10, 7, 3, 12, 15, 4, 11, 5]
-    total_size_max = 15
-    num_workers = len(cost)
-    num_tasks = len(cost[1])
-    all_workers = range(num_workers)
-    all_tasks = range(num_tasks)
-
-    # Model.
-
-    model = cp_model.CpModel()
-    # Variables
-    selected = [
-        [model.new_bool_var("x[%i,%i]" % (i, j)) for j in all_tasks]
-        for i in all_workers
+    # Allowed groups of workers:
+    group1 = [  # Subgroups of workers 0 - 3
+        [2, 3],
+        [1, 3],
+        [1, 2],
+        [0, 1],
+        [0, 2],
     ]
-    works = [model.new_bool_var("works[%i]" % i) for i in all_workers]
+
+    group2 = [  # Subgroups of workers 4 - 7
+        [6, 7],
+        [5, 7],
+        [5, 6],
+        [4, 5],
+        [4, 7],
+    ]
+
+    group3 = [  # Subgroups of workers 8 - 11
+        [10, 11],
+        [9, 11],
+        [9, 10],
+        [8, 10],
+        [8, 11],
+    ]
+
+    # Solver.
+    # Create the mip solver with the SCIP backend.
+    solver = pywraplp.Solver.CreateSolver("SCIP")
+    if not solver:
+        return
+
+    # Variables
+    # x[worker, task] is an array of 0-1 variables, which will be 1
+    # if the worker is assigned to the task.
+    x = {}
+    for worker in range(num_workers):
+        for task in range(num_tasks):
+            x[worker, task] = solver.BoolVar(f"x[{worker},{task}]")
 
     # Constraints
+    # The total size of the tasks each worker takes on is at most total_size_max.
+    for worker in range(num_workers):
+        solver.Add(solver.Sum([x[worker, task] for task in range(num_tasks)]) <= 1)
 
-    # Link selected and workers.
-    for i in range(num_workers):
-        model.add_max_equality(works[i], selected[i])
+    # Each task is assigned to exactly one worker.
+    for task in range(num_tasks):
+        solver.Add(solver.Sum([x[worker, task] for worker in range(num_workers)]) == 1)
 
-    # Each task is assigned to at least one worker.
-    for j in all_tasks:
-        model.add(sum(selected[i][j] for i in all_workers) >= 1)
+    # Create variables for each worker, indicating whether they work on some task.
+    work = {}
+    for worker in range(num_workers):
+        work[worker] = solver.BoolVar(f"work[{worker}]")
 
-    # Total task size for each worker is at most total_size_max
-    for i in all_workers:
-        model.add(sum(sizes[j] * selected[i][j] for j in all_tasks) <= total_size_max)
+    for worker in range(num_workers):
+        solver.Add(
+            work[worker] == solver.Sum([x[worker, task] for task in range(num_tasks)])
+        )
 
-    # Group constraints.
-    model.add_allowed_assignments([works[0], works[1], works[2], works[3]], group1)
-    model.add_allowed_assignments([works[4], works[5], works[6], works[7]], group2)
-    model.add_allowed_assignments([works[8], works[9], works[10], works[11]], group3)
+    # Group1
+    constraint_g1 = solver.Constraint(1, 1)
+    for index, _ in enumerate(group1):
+        # a*b can be transformed into 0 <= a + b - 2*p <= 1 with p in [0,1]
+        # p is True if a AND b, False otherwise
+        constraint = solver.Constraint(0, 1)
+        constraint.SetCoefficient(work[group1[index][0]], 1)
+        constraint.SetCoefficient(work[group1[index][1]], 1)
+        p = solver.BoolVar(f"g1_p{index}")
+        constraint.SetCoefficient(p, -2)
+
+        constraint_g1.SetCoefficient(p, 1)
+
+    # Group2
+    constraint_g2 = solver.Constraint(1, 1)
+    for index, _ in enumerate(group2):
+        # a*b can be transformed into 0 <= a + b - 2*p <= 1 with p in [0,1]
+        # p is True if a AND b, False otherwise
+        constraint = solver.Constraint(0, 1)
+        constraint.SetCoefficient(work[group2[index][0]], 1)
+        constraint.SetCoefficient(work[group2[index][1]], 1)
+        p = solver.BoolVar(f"g2_p{index}")
+        constraint.SetCoefficient(p, -2)
+
+        constraint_g2.SetCoefficient(p, 1)
+
+    # Group3
+    constraint_g3 = solver.Constraint(1, 1)
+    for index, _ in enumerate(group3):
+        # a*b can be transformed into 0 <= a + b - 2*p <= 1 with p in [0,1]
+        # p is True if a AND b, False otherwise
+        constraint = solver.Constraint(0, 1)
+        constraint.SetCoefficient(work[group3[index][0]], 1)
+        constraint.SetCoefficient(work[group3[index][1]], 1)
+        p = solver.BoolVar(f"g3_p{index}")
+        constraint.SetCoefficient(p, -2)
+
+        constraint_g3.SetCoefficient(p, 1)
 
     # Objective
-    model.minimize(
-        sum(selected[i][j] * cost[i][j] for j in all_tasks for i in all_workers)
-    )
+    objective_terms = []
+    for worker in range(num_workers):
+        for task in range(num_tasks):
+            objective_terms.append(costs[worker][task] * x[worker, task])
+    solver.Minimize(solver.Sum(objective_terms))
 
-    # Solve and output solution.
-    solver = cp_model.CpSolver()
-    status = solver.solve(model)
+    # Solve
+    print(f"Solving with {solver.SolverVersion()}")
+    status = solver.Solve()
 
-    if status == cp_model.OPTIMAL:
-        print("Total cost = %i" % solver.objective_value)
-        print()
-        for i in all_workers:
-            for j in all_tasks:
-                if solver.boolean_value(selected[i][j]):
+    # Print solution.
+    if status == pywraplp.Solver.OPTIMAL or status == pywraplp.Solver.FEASIBLE:
+        print(f"Total cost = {solver.Objective().Value()}\n")
+        for worker in range(num_workers):
+            for task in range(num_tasks):
+                if x[worker, task].solution_value() > 0.5:
                     print(
-                        "Worker ", i, " assigned to task ", j, "  Cost = ", cost[i][j]
+                        f"Worker {worker} assigned to task {task}."
+                        + f" Cost: {costs[worker][task]}"
                     )
-
-        print()
-
-    print("Statistics")
-    print("  - conflicts : %i" % solver.num_conflicts)
-    print("  - branches  : %i" % solver.num_branches)
-    print("  - wall time : %f s" % solver.wall_time)
-
-
-def main(argv: Sequence[str]) -> None:
-    if len(argv) > 1:
-        raise app.UsageError("Too many command-line arguments.")
-    solve_assignment()
-
+    else:
+        print("No solution found.")
 
 if __name__ == "__main__":
-    app.run(main)
+    main()
